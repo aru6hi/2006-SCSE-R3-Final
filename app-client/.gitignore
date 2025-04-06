@@ -1,0 +1,10 @@
+android/app/build/
+android/build/
+**/LibrariesForLibsInPluginsBlocks/
+node_modules/
+.project
+.classpath
+.settings/
+android/.gradle/
+*.lock
+android/app/.cxx/
