@@ -9,9 +9,8 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { useVehicleData } from "./VehicleContext"; // Import context
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "../services/firebaseConfig";
+import { useVehicleData } from "./VehicleContext";
+import { fetchUserData } from "../services/userProfileService"; // Import from service instead of direct Firestore
 
 const Profile = () => {
   const navigation = useNavigation();
@@ -19,18 +18,13 @@ const Profile = () => {
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Fetch user details from Firestore using the email from vehicleData
+  // Fetch user details using the userProfileService
   useEffect(() => {
-    const fetchUserData = async () => {
+    const getUserData = async () => {
       try {
         if (vehicleData && vehicleData.email) {
-          const userDocRef = doc(db, "users", vehicleData.email);
-          const userDocSnap = await getDoc(userDocRef);
-          if (userDocSnap.exists()) {
-            setUserData(userDocSnap.data());
-          } else {
-            console.log("No user document found");
-          }
+          const data = await fetchUserData(vehicleData.email);
+          setUserData(data);
         } else {
           console.log("No email available in vehicleData");
         }
@@ -40,7 +34,7 @@ const Profile = () => {
         setLoading(false);
       }
     };
-    fetchUserData();
+    getUserData();
   }, [vehicleData]);
 
   if (loading) {

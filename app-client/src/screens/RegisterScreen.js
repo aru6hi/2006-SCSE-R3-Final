@@ -8,7 +8,7 @@ import {
   Alert,
   Image,
 } from 'react-native';
-import { registerUser } from '../services/api'; // Connects to backend API
+import { registerUser } from '../services/authService'; // Connects to backend API
 import { useVehicleData } from './VehicleContext';
 
 export default function RegisterScreen({ navigation }) {
@@ -24,10 +24,10 @@ export default function RegisterScreen({ navigation }) {
       Alert.alert('Error', 'Please fill all fields.');
       return;
     }
-    
+
     // Debug log to check the values being sent
     console.log('Registering with:', { email, password, fullName, phoneNumber });
-    
+
     try {
       // Call the registerUser function from your API
       const response = await registerUser(email, password, fullName, phoneNumber);

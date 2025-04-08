@@ -14,9 +14,10 @@ import {
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useVehicleData } from "./VehicleContext";
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { db } from "../services/firebaseConfig";
-// 1) Import your car images in an array
+import { fetchUserData, updateUserProfile } from "../services/userProfileService";
+import { updateVehicleDetails } from "../services/vehicleService";
+
+// Car avatars array
 const carAvatars = [
   require('../../assets/vecteezy_dynamic-sport-car-with-sleek-lines-and-powerful-presence_51785067.png'),
    require('../../assets/vecteezy_modern-car-isolated-on-transparent-background-3d-rendering_19146428.png'),
@@ -36,32 +37,34 @@ export default function EditDetailsScreen() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [country, setCountry] = useState("");
   const [vehicleNumber, setVehicleNumber] = useState("");
+  const [iuNumber, setIuNumber] = useState(""); // Added IU Number field
 
   // Car avatar index
   const [avatarIndex, setAvatarIndex] = useState(0);
 
   // Loading indicator
   const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(false);
 
-  // 2) Fetch user details (including avatarIndex) from Firestore
+  // Fetch user details from userProfileService
   useEffect(() => {
     const fetchUserDetails = async () => {
       if (vehicleData && vehicleData.email) {
         try {
-          const userDocRef = doc(db, "users", vehicleData.email);
-          const userDocSnap = await getDoc(userDocRef);
-          if (userDocSnap.exists()) {
-            const data = userDocSnap.data();
-            setFullName(data.fullName || "");
-            setPhoneNumber(data.phoneNumber || "");
-            setCountry(data.country || "");
-            setVehicleNumber(data.vehicleNo || "");
-            setAvatarIndex(data.avatarIndex || 0);
+          const userData = await fetchUserData(vehicleData.email);
+          if (userData) {
+            setFullName(userData.fullName || "");
+            setPhoneNumber(userData.phoneNumber || "");
+            setCountry(userData.country || "");
+            setVehicleNumber(userData.vehicleNo || "");
+            setIuNumber(userData.iuNo || "");
+            setAvatarIndex(userData.avatarIndex || 0);
           } else {
             console.log("No user document found");
           }
         } catch (error) {
           console.error("Error fetching user details:", error);
+          Alert.alert("Error", "Failed to load user details");
         } finally {
           setLoading(false);
         }
@@ -72,28 +75,34 @@ export default function EditDetailsScreen() {
     };
 
     fetchUserDetails();
-  }, []);
+  }, [vehicleData]);
 
-  // 3) Handle update (save to Firestore and context)
+  // Handle update using both services
   const handleUpdate = async () => {
     if (!vehicleData.email) {
       Alert.alert("Error", "User email not available");
       return;
     }
+
+    setUpdating(true);
     try {
-      const userDocRef = doc(db, "users", vehicleData.email);
-      await setDoc(
-        userDocRef,
-        {
-          fullName,
-          phoneNumber,
-          country,
-          vehicleNo: vehicleNumber,
-          avatarIndex,
-          updatedAt: new Date(),
-        },
-        { merge: true }
+      // Use userProfileService to update user profile
+      const userProfileData = {
+        fullName,
+        phoneNumber,
+        avatarIndex,
+      };
+
+      await updateUserProfile(vehicleData.email, userProfileData);
+
+      // Use vehicleService to update vehicle details
+      await updateVehicleDetails(
+        vehicleData.email,
+        country,
+        vehicleNumber,
+        iuNumber
       );
+
       // Update local context so other screens see the changes
       updateVehicleData({
         ...vehicleData,
@@ -101,14 +110,17 @@ export default function EditDetailsScreen() {
         phoneNumber,
         country,
         vehicleNumber,
+        iuNumber,
         avatarIndex,
       });
 
-      Alert.alert("Success", "User details updated");
+      Alert.alert("Success", "User and vehicle details updated");
       navigation.goBack();
     } catch (error) {
-      console.error("Error updating user details:", error);
+      console.error("Error updating details:", error);
       Alert.alert("Error", "Failed to update details");
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -125,69 +137,99 @@ export default function EditDetailsScreen() {
       <StatusBar barStyle="dark-content" />
       <Text style={styles.title}>Edit Your Details</Text>
 
-      {/* Basic info fields */}
-      <TextInput
-        style={styles.input}
-        placeholder="Full Name"
-        value={fullName}
-        onChangeText={setFullName}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Phone Number"
-        value={phoneNumber}
-        onChangeText={setPhoneNumber}
-        keyboardType="phone-pad"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Country"
-        value={country}
-        onChangeText={setCountry}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Vehicle Number"
-        value={vehicleNumber}
-        onChangeText={setVehicleNumber}
-      />
+      <ScrollView style={styles.scrollContainer}>
+        {/* User Profile Section */}
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionTitle}>Personal Information</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Full Name"
+            value={fullName}
+            onChangeText={setFullName}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Phone Number"
+            value={phoneNumber}
+            onChangeText={setPhoneNumber}
+            keyboardType="phone-pad"
+          />
+        </View>
 
-      {/* Preview the currently selected avatar */}
-      <View style={styles.avatarPreview}>
-        <Image
-          source={carAvatars[avatarIndex]}
-          style={styles.avatarPreviewImage}
-          resizeMode="contain"
-        />
-        <Text style={styles.avatarLabel}>
-          Current Avatar (Index {avatarIndex})
-        </Text>
-      </View>
+        {/* Vehicle Section */}
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionTitle}>Vehicle Information</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Country"
+            value={country}
+            onChangeText={setCountry}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Vehicle Number"
+            value={vehicleNumber}
+            onChangeText={setVehicleNumber}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="IU Number"
+            value={iuNumber}
+            onChangeText={setIuNumber}
+          />
+        </View>
 
-      {/* Horizontal scroll of avatar options */}
-      <ScrollView
-        horizontal
-        style={styles.avatarScroll}
-        contentContainerStyle={styles.avatarScrollContent}
-      >
-        {carAvatars.map((avatarSrc, idx) => (
-          <TouchableOpacity
-            key={idx}
-            style={[
-              styles.avatarOption,
-              idx === avatarIndex && styles.avatarOptionSelected,
-            ]}
-            onPress={() => setAvatarIndex(idx)}
+        {/* Avatar Selection Section */}
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionTitle}>Vehicle Avatar</Text>
+
+          {/* Preview the currently selected avatar */}
+          <View style={styles.avatarPreview}>
+            <Image
+              source={carAvatars[avatarIndex]}
+              style={styles.avatarPreviewImage}
+              resizeMode="contain"
+            />
+            <Text style={styles.avatarLabel}>
+              Selected Vehicle Avatar
+            </Text>
+          </View>
+
+          {/* Horizontal scroll of avatar options */}
+          <ScrollView
+            horizontal
+            style={styles.avatarScroll}
+            contentContainerStyle={styles.avatarScrollContent}
+            showsHorizontalScrollIndicator={false}
           >
-            <Image source={avatarSrc} style={styles.avatarImage} />
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+            {carAvatars.map((avatarSrc, idx) => (
+              <TouchableOpacity
+                key={idx}
+                style={[
+                  styles.avatarOption,
+                  idx === avatarIndex && styles.avatarOptionSelected,
+                ]}
+                onPress={() => setAvatarIndex(idx)}
+              >
+                <Image source={avatarSrc} style={styles.avatarImage} />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
 
-      {/* Save changes */}
-      <TouchableOpacity style={styles.button} onPress={handleUpdate}>
-        <Text style={styles.buttonText}>Update Details</Text>
-      </TouchableOpacity>
+        {/* Save changes */}
+        <TouchableOpacity
+          style={styles.button}
+          onPress={handleUpdate}
+          disabled={updating}
+        >
+          {updating ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Update Details</Text>
+          )}
+        </TouchableOpacity>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -202,6 +244,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#DCE7E3",
+  },
+  scrollContainer: {
     padding: 16,
   },
   title: {
@@ -211,8 +255,25 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: "#333",
   },
-  input: {
+  sectionContainer: {
     backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 12,
+    color: "#333",
+  },
+  input: {
+    backgroundColor: "#f5f5f5",
     padding: 12,
     marginVertical: 8,
     borderRadius: 8,
@@ -232,22 +293,22 @@ const styles = StyleSheet.create({
     color: "#333",
   },
   avatarScroll: {
-    marginTop: 10,
-    marginBottom: 20,
+    marginTop: 16,
   },
   avatarScrollContent: {
     paddingHorizontal: 5,
     alignItems: "center",
   },
   avatarOption: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F5F5F5",
     borderRadius: 8,
     marginHorizontal: 5,
-    padding: 5,
+    padding: 8,
   },
   avatarOptionSelected: {
     borderColor: "#007AFF",
     borderWidth: 2,
+    backgroundColor: "#E6F2FF",
   },
   avatarImage: {
     width: 60,
@@ -260,6 +321,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     marginVertical: 20,
+    height: 50,
+    justifyContent: "center",
   },
   buttonText: {
     color: "#fff",

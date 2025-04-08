@@ -7,8 +7,8 @@ import {
   StyleSheet, 
   Alert 
 } from 'react-native';
-import { updateVehicleDetails } from '../services/api';
 import { useVehicleData } from './VehicleContext'; // Import the context
+import { updateVehicleDetails } from "../services/vehicleService";
 
 export default function VehicleDetailsScreen({ navigation }) {
   const { vehicleData, updateVehicleData } = useVehicleData(); // Get context data

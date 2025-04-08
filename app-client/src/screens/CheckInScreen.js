@@ -10,19 +10,15 @@ import {
   Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  updateDoc,
-  deleteDoc,
-  doc,
-} from 'firebase/firestore';
-import { db } from '../services/firebaseConfig';
 import { useVehicleData } from './VehicleContext';
+import {
+  fetchUserBookings,
+  handleCheckIn,
+  handleCancel,
+  handleChangeTiming
+} from '../services/bookingService';
 
-export default function MyParkingPage() {
+export default function CheckInScreen() {
   const navigation = useNavigation();
   const { vehicleData } = useVehicleData();
   const userEmail = vehicleData?.email || '';
@@ -38,30 +34,20 @@ export default function MyParkingPage() {
   const [searchActive, setSearchActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Fetch bookings from Firestore for this user
+  // Fetch bookings using bookingService
   useEffect(() => {
-    const fetchBookings = async () => {
+    const getBookings = async () => {
       try {
-        if (!userEmail) {
-          console.log('No user email found');
-          setLoading(false);
-          return;
-        }
-        // Query all bookings where userEmail == logged-in user's email
-        const q = query(collection(db, 'bookings'), where('userEmail', '==', userEmail));
-        const querySnapshot = await getDocs(q);
-        const userBookings = [];
-        querySnapshot.forEach((docSnap) => {
-          userBookings.push({ id: docSnap.id, ...docSnap.data() });
-        });
+        const userBookings = await fetchUserBookings(userEmail);
         setBookings(userBookings);
       } catch (error) {
         console.error('Error fetching bookings:', error);
+        Alert.alert('Error', 'Failed to load your bookings');
       } finally {
         setLoading(false);
       }
     };
-    fetchBookings();
+    getBookings();
   }, [userEmail]);
 
   // Auto-cancel expired ongoing bookings (only for "Today" bookings)
@@ -74,7 +60,7 @@ export default function MyParkingPage() {
         const bookingStatus = booking.status ? booking.status.toLowerCase() : 'ongoing';
         if (bookingStatus === "ongoing" && booking.date === "Today") {
           if (parseInt(booking.hoursTo, 10) <= currentHour) {
-            updateDoc(doc(db, 'bookings', booking.id), { status: 'cancelled' })
+            handleCancel(booking.id)
               .then(() => {
                 setBookings((prev) =>
                   prev.map((b) =>
@@ -114,10 +100,10 @@ export default function MyParkingPage() {
     );
   }
 
-  // --- Booking Actions ---
+  // --- Booking Actions using the Booking Service ---
 
   // Only allow check in during the booking time
-  const handleCheckIn = async (booking) => {
+  const onCheckIn = async (booking) => {
     const now = new Date();
     const currentHour = now.getHours();
     if (booking.date !== "Today") {
@@ -131,44 +117,41 @@ export default function MyParkingPage() {
       return;
     }
     try {
-      await updateDoc(doc(db, 'bookings', booking.id), { status: 'completed' });
+      await handleCheckIn(booking);
       Alert.alert('Success', 'Booking checked in.');
       setBookings((prev) =>
         prev.map((bk) => (bk.id === booking.id ? { ...bk, status: 'completed' } : bk))
       );
     } catch (error) {
-      console.error('Check-In error:', error);
-      Alert.alert('Error', 'Failed to check in.');
+      Alert.alert('Error', error.message || 'Failed to check in.');
     }
   };
 
-  const handleCancel = async (bookingId) => {
+  const onCancel = async (bookingId) => {
     try {
-      await updateDoc(doc(db, 'bookings', bookingId), { status: 'cancelled' });
+      await handleCancel(bookingId);
       Alert.alert('Success', 'Booking cancelled.');
       setBookings((prev) =>
         prev.map((bk) => (bk.id === bookingId ? { ...bk, status: 'cancelled' } : bk))
       );
     } catch (error) {
-      console.error('Cancel error:', error);
-      Alert.alert('Error', 'Failed to cancel booking.');
+      Alert.alert('Error', error.message || 'Failed to cancel booking.');
     }
   };
 
-  const handleChangeTiming = async (bookingId) => {
+  const onChangeTiming = async (bookingId) => {
     try {
-      await deleteDoc(doc(db, 'bookings', bookingId));
+      await handleChangeTiming(bookingId);
       Alert.alert('Notice', 'Booking removed. Please rebook with new timing.');
       setBookings((prev) => prev.filter((bk) => bk.id !== bookingId));
       navigation.navigate('BookingScreen', { bookingId });
     } catch (error) {
-      console.error('ChangeTiming error:', error);
-      Alert.alert('Error', 'Failed to change timing.');
+      Alert.alert('Error', error.message || 'Failed to change timing.');
     }
   };
 
   // In completed or cancelled, allow the user to rebook the same spot.
-  const handleBookAgain = (booking) => {
+  const onBookAgain = (booking) => {
     navigation.navigate('BookingScreen', { carParkNo: booking.carParkNo });
   };
 
@@ -253,13 +236,13 @@ export default function MyParkingPage() {
                 {/* Action Buttons */}
                 {activeTab === 'ongoing' && (
                   <View style={styles.buttonRow}>
-                    <TouchableOpacity style={styles.actionButton} onPress={() => handleCancel(booking.id)}>
+                    <TouchableOpacity style={styles.actionButton} onPress={() => onCancel(booking.id)}>
                       <Text style={styles.actionButtonText}>Cancel Booking</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionButton} onPress={() => handleCheckIn(booking)}>
+                    <TouchableOpacity style={styles.actionButton} onPress={() => onCheckIn(booking)}>
                       <Text style={styles.actionButtonText}>Check-In</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionButton} onPress={() => handleChangeTiming(booking.id)}>
+                    <TouchableOpacity style={styles.actionButton} onPress={() => onChangeTiming(booking.id)}>
                       <Text style={styles.actionButtonText}>Change Timing</Text>
                     </TouchableOpacity>
                   </View>
@@ -267,7 +250,7 @@ export default function MyParkingPage() {
 
                 {(activeTab === 'completed' || activeTab === 'cancelled') && (
                   <View style={styles.buttonRow}>
-                    <TouchableOpacity style={styles.actionButton} onPress={() => handleBookAgain(booking)}>
+                    <TouchableOpacity style={styles.actionButton} onPress={() => onBookAgain(booking)}>
                       <Text style={styles.actionButtonText}>Book Again</Text>
                     </TouchableOpacity>
                   </View>
@@ -281,6 +264,7 @@ export default function MyParkingPage() {
   );
 }
 
+// ... existing styles ...
 const styles = StyleSheet.create({
   loaderContainer: {
     flex: 1,

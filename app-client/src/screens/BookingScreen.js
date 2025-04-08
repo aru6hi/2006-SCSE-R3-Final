@@ -8,34 +8,26 @@ import {
   StatusBar,
   Alert,
   Modal,
-  Platform,
-  PermissionsAndroid,
   ActivityIndicator,
   ScrollView,
-  Linking,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import carParksData from '../../assets/carparks_sg.json';
-import Geolocation from '@react-native-community/geolocation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// NEW: Import the bookSpot function
-import { bookSpot } from "../services/api";
+// Import services
+import { fetchCarParkAvailability } from '../services/carParkService';
+import { bookSpot } from "../services/bookingService";
+import { getCurrentLocation } from '../services/geolocationService';
 import { useVehicleData } from './VehicleContext';
 
-const haversineDistance = (coords1, coords2) => {
-  const deg2rad = (deg) => deg * (Math.PI / 180);
-  const R = 6371; // Earth's radius in km
-  const dLat = deg2rad(coords2.lat - coords1.lat);
-  const dLon = deg2rad(coords2.lon - coords1.lon);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(deg2rad(coords1.lat)) *
-      Math.cos(deg2rad(coords2.lat)) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // Distance in km
-};
+// Import map service functions
+import {
+  haversineDistance,
+  getCarParkDetailMapHTML,
+  showCarParkOnMap,
+  openGoogleMapsDirections
+} from '../services/mapService';
 
 export default function BookingScreen({ route, navigation }) {
   const { carPark: routeCarPark, carParkNo } = route?.params || {};
@@ -48,7 +40,7 @@ export default function BookingScreen({ route, navigation }) {
   const [hoursModalVisible, setHoursModalVisible] = useState(false);
   const [isFromHours, setIsFromHours] = useState(true);
   const [distance, setDistance] = useState(null);
-  const [centerLocation, setCenterLocation] = useState(null);
+  const [userLocation, setUserLocation] = useState(null);
   const webViewRef = useRef(null);
   const { vehicleData } = useVehicleData();
   const userEmail = vehicleData.email;
@@ -81,18 +73,17 @@ export default function BookingScreen({ route, navigation }) {
   // Fetch availability data
   useEffect(() => {
     if (!carPark) return;
-    const fetchAvailability = async () => {
+
+    const getAvailability = async () => {
       try {
         setLoading(true);
         setError(null);
-        const response = await fetch('https://api.data.gov.sg/v1/transport/carpark-availability');
-        if (!response.ok) {
-          throw new Error('Network response was not ok');
-        }
-        const data = await response.json();
+
+        const data = await fetchCarParkAvailability();
         const carparkInfo = data.items[0].carpark_data.find(
           cp => cp.carpark_number === carPark.car_park_no
         );
+
         if (carparkInfo) {
           setAvailabilityData(carparkInfo);
         } else {
@@ -111,79 +102,57 @@ export default function BookingScreen({ route, navigation }) {
         setLoading(false);
       }
     };
-    fetchAvailability();
-    const intervalId = setInterval(fetchAvailability, 5 * 60 * 1000);
+
+    getAvailability();
+    const intervalId = setInterval(getAvailability, 5 * 60 * 1000);
     return () => clearInterval(intervalId);
   }, [carPark]);
 
-  // Request location
+  // Request location using location service
   useEffect(() => {
-    const requestLocationPermission = async () => {
-      if (Platform.OS === 'android') {
-        try {
-          const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
-          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-            console.log("Location permission denied");
-            return;
-          }
-        } catch (err) {
-          console.warn(err);
-          return;
-        }
-      }
-      Geolocation.getCurrentPosition(
-        (position) => {
-          const userLocation = {
-            lat: position.coords.latitude,
-            lon: position.coords.longitude,
+    const fetchLocation = async () => {
+      try {
+        const coords = await getCurrentLocation();
+        const userLoc = {
+          lat: coords.latitude,
+          lon: coords.longitude,
+        };
+        setUserLocation(userLoc);
+
+        if (carPark) {
+          const carParkLocation = {
+            lat: parseFloat(carPark.latitude),
+            lon: parseFloat(carPark.longitude)
           };
-          setCenterLocation(userLocation);
-          if (carPark) {
-            const carParkLocation = {
-              lat: parseFloat(carPark.latitude),
-              lon: parseFloat(carPark.longitude)
-            };
-            const distanceToCarPark = haversineDistance(userLocation, carParkLocation);
-            setDistance(distanceToCarPark.toFixed(2));
-          }
-        },
-        (error) => console.error("Geolocation error: ", error),
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
-      );
+          // Use haversineDistance from mapService
+          const distanceToCarPark = haversineDistance(userLoc, carParkLocation);
+          setDistance(distanceToCarPark.toFixed(2));
+        }
+      } catch (error) {
+        console.error("Geolocation error:", error.message);
+        Alert.alert("Location Error", "Could not get your current location.");
+      }
     };
-    requestLocationPermission();
+
+    fetchLocation();
   }, [carPark]);
 
-  // Inject map script
-  const injectMapScript = () => {
-    if (!carPark || !webViewRef.current) return;
-    const script = `
-      (function() {
-        var carPark = ${JSON.stringify(carPark)};
-        var userLocation = ${centerLocation ? JSON.stringify(centerLocation) : 'null'};
-        if (window.showCarParkOnMap) {
-          window.showCarParkOnMap(carPark, userLocation);
-        }
-      })();
-    `;
-    webViewRef.current?.injectJavaScript(script);
-  };
-
+  // Use mapService to show car park on map
   useEffect(() => {
-    if (carPark && webViewRef.current) {
-      injectMapScript();
+    if (carPark && webViewRef.current && userLocation) {
+      showCarParkOnMap(webViewRef, carPark, userLocation);
     }
-  }, [carPark, centerLocation]);
+  }, [carPark, userLocation]);
 
   const setCurrentTime = () => {
     const now = new Date();
     const currentHour = now.getHours();
     const laterHour = (currentHour + 1) % 24;
-    setHoursFrom(currentHour.toString());
-    setHoursTo(laterHour.toString());
+    setHoursFrom(currentHour.toString().padStart(2, '0'));
+    setHoursTo(laterHour.toString().padStart(2, '0'));
   };
 
-  // NEW: Calculate available hours
+  // Calculate available hours
   const baseHours =
     date === 'Today'
       ? [...Array(24).keys()].filter(hour => hour >= new Date().getHours())
@@ -193,7 +162,7 @@ export default function BookingScreen({ route, navigation }) {
       ? baseHours.filter(hour => hour > parseInt(hoursFrom))
       : baseHours;
 
-  // NEW: Function to select an hour from the modal
+  // Select an hour from the modal
   const selectHour = (hour) => {
     if (isFromHours) {
       setHoursFrom(hour.toString().padStart(2, '0'));
@@ -206,15 +175,21 @@ export default function BookingScreen({ route, navigation }) {
     setHoursModalVisible(false);
   };
 
-  // CHANGED: handleBooking is now async so we can await bookSpot
+  // Handle booking functionality
   const handleBooking = async () => {
+    // Validate inputs
+    if (!hoursFrom || !hoursTo) {
+      Alert.alert("Missing Information", "Please select both start and end times.");
+      return;
+    }
+
     try {
       if (!userEmail) {
         Alert.alert("Error", "User email not available");
         return;
       }
 
-      // Call your API to book the spot.
+      // Call API to book the spot
       await bookSpot(
         carPark.car_park_no,
         date,
@@ -224,7 +199,7 @@ export default function BookingScreen({ route, navigation }) {
         carPark.address
       );
 
-      // Update the UI by reducing the available count by 1.
+      // Update the UI by reducing the available count by 1
       if (availabilityData?.carpark_info?.length > 0) {
         const currentAvailable = parseInt(availabilityData.carpark_info[0].lots_available, 10);
         const newAvailable = Math.max(currentAvailable - 1, 0);
@@ -237,11 +212,11 @@ export default function BookingScreen({ route, navigation }) {
         };
         setAvailabilityData(updatedAvailability);
 
-        // Store the new availability locally keyed by car park number.
+        // Store the new availability locally keyed by car park number
         await AsyncStorage.setItem(`availability_${carPark.car_park_no}`, newAvailable.toString());
       }
 
-      // Show booking success alert.
+      // Show booking success alert
       const displayAddress = carPark.address || "145 West St.";
       Alert.alert(
         "Booking Successful",
@@ -257,7 +232,7 @@ export default function BookingScreen({ route, navigation }) {
   const selectDate = (selectedDate) => {
     setDate(selectedDate);
     setDateModalVisible(false);
-    // Optionally reset time selections if needed:
+    // Reset time selections when date changes
     setHoursFrom('');
     setHoursTo('');
   };
@@ -269,69 +244,12 @@ export default function BookingScreen({ route, navigation }) {
     }));
   };
 
-  // Function to open Google Maps for directions
-  const openInGoogleMaps = () => {
+  // Use mapService to open Google Maps directions
+  const handleOpenGoogleMaps = () => {
     if (carPark) {
-      const lat = carPark.latitude;
-      const lng = carPark.longitude;
-      const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
-      Linking.openURL(url).catch(err => console.error("Failed to open Google Maps", err));
+      openGoogleMapsDirections(carPark);
     }
   };
-
-  const leafletHtml = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8" />
-      <title>Leaflet Map</title>
-      <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-      <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-      <style>
-        html, body { margin: 0; padding: 0; height: 100%; }
-        #map { width: 100%; height: 100%; }
-      </style>
-    </head>
-    <body>
-      <div id="map"></div>
-      <script>
-        var map = L.map('map');
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '©️ OpenStreetMap contributors',
-          maxZoom: 20
-        }).addTo(map);
-        var carParkMarker;
-        var userMarker;
-        window.showCarParkOnMap = function(carPark, userLocation) {
-          if (carParkMarker) map.removeLayer(carParkMarker);
-          if (userMarker) map.removeLayer(userMarker);
-          var lat = parseFloat(carPark.latitude);
-          var lon = parseFloat(carPark.longitude);
-          if (!isNaN(lat) && !isNaN(lon)) {
-            carParkMarker = L.marker([lat, lon])
-              .bindPopup(carPark.address || "Car Park")
-              .addTo(map);
-            if (userLocation) {
-              userMarker = L.marker([userLocation.lat, userLocation.lon], {
-                icon: L.divIcon({
-                  html: '<div style="background-color: #4285F4; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;"></div>',
-                  className: 'user-location-marker'
-                })
-              }).addTo(map);
-              var bounds = L.latLngBounds([
-                [lat, lon],
-                [userLocation.lat, userLocation.lon]
-              ]);
-              map.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 });
-            } else {
-              map.setView([lat, lon], 18);
-            }
-          }
-        };
-      </script>
-    </body>
-    </html>
-  `;
 
   if (!carPark) {
     return (
@@ -400,20 +318,19 @@ export default function BookingScreen({ route, navigation }) {
         </Text>
       </View>
 
-      {/* Map Section */}
+      {/* Map Section - using HTML from mapService */}
       <View style={styles.mapContainer}>
         <WebView
           ref={webViewRef}
           originWhitelist={["*"]}
-          source={{ html: leafletHtml }}
+          source={{ html: getCarParkDetailMapHTML() }}
           style={styles.webviewMap}
-          onLoad={() => injectMapScript()}
         />
       </View>
 
       {/* Open in Google Maps Button */}
       <View style={styles.openMapsContainer}>
-        <TouchableOpacity style={styles.openMapsButton} onPress={openInGoogleMaps}>
+        <TouchableOpacity style={styles.openMapsButton} onPress={handleOpenGoogleMaps}>
           <Text style={styles.openMapsText}>Open in Google Maps</Text>
         </TouchableOpacity>
       </View>
@@ -504,7 +421,13 @@ export default function BookingScreen({ route, navigation }) {
         </View>
 
         {/* Book Button */}
-        <TouchableOpacity style={styles.bookButton} onPress={handleBooking}>
+        <TouchableOpacity
+          style={[
+            styles.bookButton,
+            (!hoursFrom || !hoursTo) && styles.bookButtonDisabled
+          ]}
+          onPress={handleBooking}
+        >
           <Text style={styles.bookButtonText}>BOOK SPOT</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -760,6 +683,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
   },
+  dropdownIcon: {
+    fontSize: 12,
+    color: '#666',
+  },
   currentTimeButton: {
     backgroundColor: '#0D6EFD',
     paddingVertical: 10,
@@ -807,6 +734,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 10,
   },
+  bookButtonDisabled: {
+    backgroundColor: '#A0C0FF',
+  },
   bookButtonText: {
     color: 'white',
     fontSize: 16,
@@ -831,6 +761,10 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     color: '#0D6EFD',
   },
+  hourScrollContainer: {
+    width: '100%',
+    alignItems: 'center',
+  },
   dateOption: {
     width: '100%',
     paddingVertical: 15,
@@ -851,19 +785,6 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
   },
-  cancelButton: {
-    marginTop: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-  },
-  cancelButtonText: {
-    color: '#757575',
-    fontSize: 16,
-  },
-  hourScrollContainer: {
-    width: '100%',
-    alignItems: 'center',
-  },
   hourOption: {
     width: '100%',
     paddingVertical: 15,
@@ -883,5 +804,14 @@ const styles = StyleSheet.create({
   hourOptionTextSelected: {
     color: 'white',
     fontWeight: 'bold',
+  },
+  cancelButton: {
+    marginTop: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+  },
+  cancelButtonText: {
+    color: '#757575',
+    fontSize: 16,
   },
 });

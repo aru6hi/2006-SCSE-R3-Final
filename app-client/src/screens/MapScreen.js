@@ -4,13 +4,11 @@ import {
   StyleSheet,
   TouchableOpacity,
   Text,
-  Platform,
-  PermissionsAndroid,
   Alert
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import carParksData from '../../assets/carparks_sg.json';
-import Geolocation from '@react-native-community/geolocation';
+import { getCurrentLocation } from '../services/geolocationService';
 
 export default function MapScreen({ route, navigation }) {
   const { searchQuery } = route.params || "";
@@ -45,33 +43,20 @@ export default function MapScreen({ route, navigation }) {
       };
       geocodeAddress(searchQuery);
     } else {
-      const requestLocationPermission = async () => {
-        if (Platform.OS === 'android') {
-          try {
-            const granted = await PermissionsAndroid.request(
-              PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
-            );
-            if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-              console.log("Location permission denied");
-              return;
-            }
-          } catch (err) {
-            console.warn(err);
-            return;
-          }
+      // Use geolocationService instead of direct Geolocation API
+      const fetchLocation = async () => {
+        try {
+          const coords = await getCurrentLocation();
+          setCenterLocation({
+            lat: coords.latitude,
+            lon: coords.longitude,
+          });
+        } catch (error) {
+          console.error("Geolocation error:", error.message);
+          Alert.alert("Location Error", "Could not get your current location.");
         }
-        Geolocation.getCurrentPosition(
-          (position) => {
-            setCenterLocation({
-              lat: position.coords.latitude,
-              lon: position.coords.longitude,
-            });
-          },
-          (error) => console.error("Geolocation error: ", error),
-          { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
-        );
       };
-      requestLocationPermission();
+      fetchLocation();
     }
   }, [searchQuery]);
 

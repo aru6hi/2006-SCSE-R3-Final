@@ -8,26 +8,25 @@ import {
   ActivityIndicator,
   ScrollView,
   Image,
-  Platform,
-  PermissionsAndroid,
   Alert
 } from 'react-native';
-import { useVehicleData } from './VehicleContext';  // Import the context
-import { doc, getDoc, updateDoc } from 'firebase/firestore'; // If you want to save avatar to Firestore
-import Geolocation from '@react-native-community/geolocation';
+import { useVehicleData } from './VehicleContext';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { db } from '../services/firebaseConfig';
 import carParksData from '../../assets/carparks_sg.json';
-import { db } from "../services/firebaseConfig";
+import { getCurrentLocation } from '../services/geolocationService';
+import { WebView } from 'react-native-webview'; // Add this import
+import { getNearbyCarParks, getCarParksMapHTML, showCarParksOnMap } from '../services/mapService'; // Import map service functions
 
-// 1) Import all your car images here:
+// Car avatar imports
 const carAvatars = [
   require('../../assets/vecteezy_dynamic-sport-car-with-sleek-lines-and-powerful-presence_51785067.png'),
-  require('../../assets/vecteezy_modern-car-isolated-on-transparent-background-3d-rendering_19146428.png'),
-  require('../../assets/vecteezy_sport-car-3d-rendering_13472036.png'),
-  require('../../assets/vecteezy_sport-car-isolated-on-transparent-background-3d-rendering_19069771.png'),
-  require('../../assets/vecteezy_toy-car-isolated_13737872.png'),
-  require('../../assets/vecteezy_white-sport-car-on-transparent-background-3d-rendering_25305916.png'),
-  require('../../assets/vecteezy_white-suv-on-transparent-background-3d-rendering_25311224.png')
-
+   require('../../assets/vecteezy_modern-car-isolated-on-transparent-background-3d-rendering_19146428.png'),
+   require('../../assets/vecteezy_sport-car-3d-rendering_13472036.png'),
+   require('../../assets/vecteezy_sport-car-isolated-on-transparent-background-3d-rendering_19069771.png'),
+   require('../../assets/vecteezy_toy-car-isolated_13737872.png'),
+   require('../../assets/vecteezy_white-sport-car-on-transparent-background-3d-rendering_25305916.png'),
+   require('../../assets/vecteezy_white-suv-on-transparent-background-3d-rendering_25311224.png')
 ];
 
 export default function HomeScreen({ navigation }) {
@@ -39,11 +38,12 @@ export default function HomeScreen({ navigation }) {
   const [carParks, setCarParks] = useState([]);
   const [userLocation, setUserLocation] = useState(null);
   const [nearbySpots, setNearbySpots] = useState([]);
-
-  // NEW: track the selected avatar index in state
   const [selectedAvatarIndex, setSelectedAvatarIndex] = useState(0);
 
-  // 1) Fetch user data to update vehicle number
+  // Add WebView reference
+  const webViewRef = React.useRef(null);
+
+  // Fetch user data
   useEffect(() => {
     const fetchUserData = async () => {
       try {
@@ -51,7 +51,6 @@ export default function HomeScreen({ navigation }) {
         const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists()) {
           const data = userDocSnap.data();
-          // If you have saved an avatar index or URL in Firestore, load it:
           if (data.avatarIndex !== undefined) {
             setSelectedAvatarIndex(data.avatarIndex);
           }
@@ -72,113 +71,51 @@ export default function HomeScreen({ navigation }) {
     }
   }, [email, updateVehicleData]);
 
-  // 2) Load car parks from local JSON
+  // Load car parks from local JSON
   useEffect(() => {
     setCarParks(carParksData);
   }, []);
 
-  // 3) Get user's current location
+  // Get user's current location
   useEffect(() => {
-    const requestLocationPermission = async () => {
-      if (Platform.OS === 'android') {
-        try {
-          const granted = await PermissionsAndroid.request(
-            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-            {
-              title: "Location Permission",
-              message: "This app needs access to your location to show nearby car parks.",
-              buttonNeutral: "Ask Me Later",
-              buttonNegative: "Cancel",
-              buttonPositive: "OK",
-            }
-          );
-          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-            console.log("Location permission denied");
-            return;
-          }
-        } catch (err) {
-          console.warn(err);
-          return;
-        }
+    const fetchLocation = async () => {
+      try {
+        const coords = await getCurrentLocation();
+        setUserLocation({
+          lat: coords.latitude,
+          lon: coords.longitude,
+        });
+      } catch (error) {
+        console.error("Geolocation error:", error.message);
+        Alert.alert("Location Error", "Could not get your current location.");
       }
-      Geolocation.getCurrentPosition(
-        (position) => {
-          setUserLocation({
-            lat: position.coords.latitude,
-            lon: position.coords.longitude,
-          });
-        },
-        (error) => console.error("Geolocation error: ", error),
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
-      );
     };
-    requestLocationPermission();
+
+    fetchLocation();
   }, []);
 
-  // 4) Once we have userLocation & carParks, filter nearby spots (within 5 km)
+  // Use mapService to find nearby spots instead of duplicating code
   useEffect(() => {
     if (userLocation && carParks.length > 0) {
-      const spotsWithin5km = carParks
-        .map((park) => {
-          const dist = getDistanceInKm(
-            userLocation.lat,
-            userLocation.lon,
-            parseFloat(park.latitude),
-            parseFloat(park.longitude)
-          );
-          return { ...park, distance: dist };
-        })
-        .filter((park) => park.distance <= 5);
-      // Sort spots in increasing order (closest first)
-      spotsWithin5km.sort((a, b) => a.distance - b.distance);
-      setNearbySpots(spotsWithin5km);
+      const nearby = getNearbyCarParks(carParks, userLocation, 5);
+      setNearbySpots(nearby);
     }
   }, [userLocation, carParks]);
 
-  // Haversine formula: returns distance in km
-  const getDistanceInKm = (lat1, lon1, lat2, lon2) => {
-    const R = 6371; // Earth radius in km
-    const dLat = deg2rad(lat2 - lat1);
-    const dLon = deg2rad(lon2 - lon1);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(deg2rad(lat1)) *
-        Math.cos(deg2rad(lat2)) *
-        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  };
+  // Load map when we have data
+  useEffect(() => {
+    if (webViewRef.current && userLocation && nearbySpots.length > 0) {
+      showCarParksOnMap(webViewRef, nearbySpots, userLocation, searchQuery);
+    }
+  }, [webViewRef.current, userLocation, nearbySpots, searchQuery]);
 
-  const deg2rad = (deg) => deg * (Math.PI / 180);
-
-  // Map button handlers
-  const openMap = () => {
-    navigation.navigate('Map', { searchQuery: '' });
-  };
-
-  const searchAndOpenMap = () => {
-    navigation.navigate('Map', { searchQuery });
-  };
-
-  // Placeholder logout/profile functions
-  const handleLogout = () => {
-    navigation.navigate('LoginScreen');
-  };
-
-  const handleProfile = () => {
-    navigation.navigate('ProfileScreen');
-  };
-
-  // NEW: Confirm the chosen avatar (optionally save to Firestore)
   const handleSetCarAvatar = async () => {
     try {
-      // Save to your context
       updateVehicleData({
         ...vehicleData,
         avatarIndex: selectedAvatarIndex,
       });
       navigation.navigate('EditDetailsScreen');
-      // Optionally also update Firestore
       if (email) {
         const userDocRef = doc(db, 'users', email);
         await updateDoc(userDocRef, { avatarIndex: selectedAvatarIndex });
@@ -189,6 +126,22 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
+  const openMap = () => {
+    navigation.navigate('Map', { searchQuery: '' });
+  };
+
+  const searchAndOpenMap = () => {
+    navigation.navigate('Map', { searchQuery });
+  };
+
+  const handleLogout = () => {
+    navigation.navigate('LoginScreen');
+  };
+
+  const handleProfile = () => {
+    navigation.navigate('ProfileScreen');
+  };
+
   if (loading) {
     return (
       <View style={styles.loaderContainer}>
@@ -197,7 +150,6 @@ export default function HomeScreen({ navigation }) {
     );
   }
 
-  // Check if vehicle exists
   const hasVehicle = vehicleNumber && vehicleNumber.trim().length > 0;
 
   return (
@@ -229,14 +181,12 @@ export default function HomeScreen({ navigation }) {
           </TouchableOpacity>
         )}
 
-        {/* NEW: Show the selected avatar in a larger preview */}
         <Image
           source={carAvatars[selectedAvatarIndex]}
           style={styles.carImage}
           resizeMode="contain"
         />
 
-        {/* Horizontal scroll of all available car avatars */}
         <ScrollView
           horizontal
           style={styles.avatarScroll}
@@ -256,10 +206,19 @@ export default function HomeScreen({ navigation }) {
           ))}
         </ScrollView>
 
-        {/* Button to confirm chosen avatar */}
         <TouchableOpacity style={styles.setAvatarButton} onPress={handleSetCarAvatar}>
           <Text style={styles.setAvatarButtonText}>Set Car Avatar</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* Mini Map Preview (New) */}
+      <View style={styles.miniMapContainer}>
+        <WebView
+          ref={webViewRef}
+          originWhitelist={['*']}
+          source={{ html: getCarParksMapHTML() }}
+          style={styles.miniMap}
+        />
       </View>
 
       {/* Map & Search Section */}
@@ -367,13 +326,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  // Main preview image of the selected avatar
   carImage: {
     width: 200,
     height: 120,
     marginTop: 10,
   },
-  // Horizontal avatar scroll
   avatarScroll: {
     marginTop: 10,
     width: '100%',
@@ -408,6 +365,15 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  miniMapContainer: {
+    height: 150,
+    marginBottom: 10,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  miniMap: {
+    flex: 1,
   },
   mapSection: {
     marginBottom: 20,
