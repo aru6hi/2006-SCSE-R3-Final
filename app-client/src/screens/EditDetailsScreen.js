@@ -58,7 +58,7 @@ export default function EditDetailsScreen() {
             setCountry(userData.country || "");
             setVehicleNumber(userData.vehicleNo || "");
             setIuNumber(userData.iuNo || "");
-            setAvatarIndex(userData.avatarIndex || 0);
+            setAvatarIndex(prev => (prev === 0 ? (userData.avatarIndex || 0) : prev));
           } else {
             console.log("No user document found");
           }

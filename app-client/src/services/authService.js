@@ -57,20 +57,3 @@ export const sendPasswordResetEmail = async (email, newPassword = null) => {
     throw error;
   }
 };
-
-export const googleLogin = async () => {
-  try {
-    console.log(`Sending request to: ${API_URL}/googleLogin`);
-    const response = await fetch(`${API_URL}/googleLogin`, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Google Login failed");
-    console.log("Google Login successful:", data);
-    return data;
-  } catch (error) {
-    console.error("Google Login API Error:", error.message);
-    throw error;
-  }
-};

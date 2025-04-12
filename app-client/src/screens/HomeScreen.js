@@ -15,18 +15,22 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../services/firebaseConfig';
 import carParksData from '../../assets/carparks_sg.json';
 import { getCurrentLocation } from '../services/geolocationService';
-import { WebView } from 'react-native-webview'; // Add this import
-import { getNearbyCarParks, getCarParksMapHTML, showCarParksOnMap } from '../services/mapService'; // Import map service functions
+import { WebView } from 'react-native-webview';
+import {
+  getNearbyCarParks,
+  getCarParksMapHTML,
+  showCarParksOnMap
+} from '../services/mapService';
 
 // Car avatar imports
 const carAvatars = [
   require('../../assets/vecteezy_dynamic-sport-car-with-sleek-lines-and-powerful-presence_51785067.png'),
-   require('../../assets/vecteezy_modern-car-isolated-on-transparent-background-3d-rendering_19146428.png'),
-   require('../../assets/vecteezy_sport-car-3d-rendering_13472036.png'),
-   require('../../assets/vecteezy_sport-car-isolated-on-transparent-background-3d-rendering_19069771.png'),
-   require('../../assets/vecteezy_toy-car-isolated_13737872.png'),
-   require('../../assets/vecteezy_white-sport-car-on-transparent-background-3d-rendering_25305916.png'),
-   require('../../assets/vecteezy_white-suv-on-transparent-background-3d-rendering_25311224.png')
+  require('../../assets/vecteezy_modern-car-isolated-on-transparent-background-3d-rendering_19146428.png'),
+  require('../../assets/vecteezy_sport-car-3d-rendering_13472036.png'),
+  require('../../assets/vecteezy_sport-car-isolated-on-transparent-background-3d-rendering_19069771.png'),
+  require('../../assets/vecteezy_toy-car-isolated_13737872.png'),
+  require('../../assets/vecteezy_white-sport-car-on-transparent-background-3d-rendering_25305916.png'),
+  require('../../assets/vecteezy_white-suv-on-transparent-background-3d-rendering_25311224.png')
 ];
 
 export default function HomeScreen({ navigation }) {
@@ -40,10 +44,9 @@ export default function HomeScreen({ navigation }) {
   const [nearbySpots, setNearbySpots] = useState([]);
   const [selectedAvatarIndex, setSelectedAvatarIndex] = useState(0);
 
-  // Add WebView reference
   const webViewRef = React.useRef(null);
 
-  // Fetch user data
+  // Fetch user data from Firestore
   useEffect(() => {
     const fetchUserData = async () => {
       try {
@@ -86,15 +89,15 @@ export default function HomeScreen({ navigation }) {
           lon: coords.longitude,
         });
       } catch (error) {
-        console.error("Geolocation error:", error.message);
-        Alert.alert("Location Error", "Could not get your current location.");
+        console.error('Geolocation error:', error.message);
+        Alert.alert('Location Error', 'Could not get your current location.');
       }
     };
 
     fetchLocation();
   }, []);
 
-  // Use mapService to find nearby spots instead of duplicating code
+  // Determine nearby car parks (within 5 km)
   useEffect(() => {
     if (userLocation && carParks.length > 0) {
       const nearby = getNearbyCarParks(carParks, userLocation, 5);
@@ -102,7 +105,7 @@ export default function HomeScreen({ navigation }) {
     }
   }, [userLocation, carParks]);
 
-  // Load map when we have data
+  // Load car parks onto the mini-map WebView
   useEffect(() => {
     if (webViewRef.current && userLocation && nearbySpots.length > 0) {
       showCarParksOnMap(webViewRef, nearbySpots, userLocation, searchQuery);
@@ -120,9 +123,9 @@ export default function HomeScreen({ navigation }) {
         const userDocRef = doc(db, 'users', email);
         await updateDoc(userDocRef, { avatarIndex: selectedAvatarIndex });
       }
-      Alert.alert("Avatar Updated", "Select your car avatar");
+      Alert.alert('Avatar Updated', 'Select your car avatar');
     } catch (err) {
-      console.error("Failed to set car avatar:", err);
+      console.error('Failed to set car avatar:', err);
     }
   };
 
@@ -181,37 +184,19 @@ export default function HomeScreen({ navigation }) {
           </TouchableOpacity>
         )}
 
+        {/* Single car image (removed the avatar gallery) */}
         <Image
           source={carAvatars[selectedAvatarIndex]}
           style={styles.carImage}
           resizeMode="contain"
         />
 
-        <ScrollView
-          horizontal
-          style={styles.avatarScroll}
-          contentContainerStyle={styles.avatarScrollContent}
-        >
-          {carAvatars.map((avatarSrc, idx) => (
-            <TouchableOpacity
-              key={idx}
-              style={[
-                styles.avatarOption,
-                idx === selectedAvatarIndex && styles.avatarOptionSelected
-              ]}
-              onPress={() => setSelectedAvatarIndex(idx)}
-            >
-              <Image source={avatarSrc} style={styles.avatarImage} />
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
         <TouchableOpacity style={styles.setAvatarButton} onPress={handleSetCarAvatar}>
-          <Text style={styles.setAvatarButtonText}>Set Car Avatar</Text>
+          <Text style={styles.setAvatarButtonText}>Set New Car Avatar</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Mini Map Preview (New) */}
+      {/* Mini Map Preview */}
       <View style={styles.miniMapContainer}>
         <WebView
           ref={webViewRef}
@@ -244,7 +229,11 @@ export default function HomeScreen({ navigation }) {
       <View style={styles.spotsHeader}>
         <Text style={styles.spotsTitle}>Spots near you</Text>
       </View>
-      <ScrollView style={styles.spotsList}>
+      {/* Keep the spots list scrollable with extra bottom padding */}
+      <ScrollView
+        style={styles.spotsList}
+        contentContainerStyle={{ paddingBottom: 50 }}
+      >
         {nearbySpots.length > 0 ? (
           nearbySpots.map((park, index) => (
             <TouchableOpacity
@@ -253,7 +242,9 @@ export default function HomeScreen({ navigation }) {
               onPress={() => navigation.navigate('BookingScreen', { carPark: park })}
             >
               <Text style={styles.spotName}>{park.address}</Text>
-              <Text style={styles.spotDistance}>{park.distance.toFixed(2)} km away</Text>
+              <Text style={styles.spotDistance}>
+                {park.distance.toFixed(2)} km away
+              </Text>
               <Text style={styles.spotPrice}>FREE: {park.free_parking}</Text>
             </TouchableOpacity>
           ))
@@ -312,7 +303,7 @@ const styles = StyleSheet.create({
   vehicleNumber: {
     fontSize: 16,
     color: '#333',
-    marginBottom: 8,
+    marginBottom: 1,
   },
   addVehicleButton: {
     backgroundColor: '#007AFF',
@@ -327,32 +318,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   carImage: {
-    width: 200,
-    height: 120,
-    marginTop: 10,
-  },
-  avatarScroll: {
-    marginTop: 10,
-    width: '100%',
-  },
-  avatarScrollContent: {
-    paddingHorizontal: 5,
-    alignItems: 'center',
-  },
-  avatarOption: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    marginHorizontal: 5,
-    padding: 5,
-  },
-  avatarOptionSelected: {
-    borderColor: '#007AFF',
-    borderWidth: 2,
-  },
-  avatarImage: {
-    width: 60,
-    height: 40,
-    resizeMode: 'contain',
+    width: 300,
+    height: 180,
+    marginTop: 3,
   },
   setAvatarButton: {
     marginTop: 10,
@@ -415,8 +383,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   spotsList: {
-    flex: 1,
-    marginBottom: 20,
+
   },
   spotCard: {
     backgroundColor: '#FFFFFF',

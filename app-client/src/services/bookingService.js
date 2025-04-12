@@ -49,7 +49,7 @@ export const fetchUserBookings = async (userEmail) => {
   }
 };
 
-// Mark a booking as completed (check-in)
+// Mark a booking as completed (check-i(n)
 export const handleCheckIn = async (booking) => {
   try {
     await updateDoc(doc(db, 'bookings', booking.id), { status: 'completed' });

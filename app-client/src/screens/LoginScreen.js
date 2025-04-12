@@ -9,7 +9,7 @@ import {
   Linking,
   Alert,
 } from 'react-native';
-import { loginUser, sendPasswordResetEmail, googleLogin } from "../services/authService"; // Import the new Google Login API function
+import { loginUser, sendPasswordResetEmail } from "../services/authService"; // Import the new Google Login API function
 import { useVehicleData } from './VehicleContext'; // Import the context
 
 const generateRandomPassword = (length = 12) => {
@@ -48,32 +48,6 @@ export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const { updateVehicleData } = useVehicleData(); // Get context data
-
-  // Handle Google Login button tap
-  const handleGoogleLogin = async () => {
-    try {
-      const user = await googleLogin();
-      if (user) {
-        console.log("Google Login successful:", user);
-
-        // Update vehicle data in context
-        updateVehicleData({
-          email: user.email || '',
-          vehicleNumber: user.vehicleNo || '',
-          iuNo: user.iuNo || '',
-          country: user.country || 'SG',
-        });
-
-        Alert.alert("Success", "Google Login successful!");
-        navigation.navigate("HomeScreen");
-      } else {
-        Alert.alert("Error", "Google Login failed. Please try again.");
-      }
-    } catch (error) {
-      console.error("Google Login failed:", error);
-      Alert.alert("Error", error.message || "Google Login failed.");
-    }
-  };
 
   // Handle Login button tap
   const handleLogin = async () => {
@@ -185,13 +159,6 @@ export default function LoginScreen({ navigation }) {
         <Text style={styles.loginButtonText}>Login</Text>
       </TouchableOpacity>
 
-      {/* OR Separator */}
-      <Text style={styles.orText}>OR</Text>
-
-      {/* Login using Google Button */}
-      <TouchableOpacity style={styles.singPassButton} onPress={handleGoogleLogin}>
-        <Text style={styles.singPassButtonText}>Login using Google</Text>
-      </TouchableOpacity>
     </View>
   );
 }

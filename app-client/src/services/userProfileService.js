@@ -27,7 +27,7 @@ export const fetchUserData = async (email) => {
  * Updates user profile data in Firestore
  * @param {string} email - User's email address (used as document ID)
  * @param {Object} userData - User data to update (name, phone, avatar, etc.)
- * @returns {Promise<Object>} - Response object
+ * @returns {Promise<ObjectU>} - Response object
  */
 export const updateUserProfile = async (email, userData) => {
   try {
