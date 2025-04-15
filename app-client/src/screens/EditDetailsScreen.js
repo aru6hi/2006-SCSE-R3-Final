@@ -20,12 +20,12 @@ import { updateVehicleDetails } from "../services/vehicleService";
 // Car avatars array
 const carAvatars = [
   require('../../assets/vecteezy_dynamic-sport-car-with-sleek-lines-and-powerful-presence_51785067.png'),
-   require('../../assets/vecteezy_modern-car-isolated-on-transparent-background-3d-rendering_19146428.png'),
-   require('../../assets/vecteezy_sport-car-3d-rendering_13472036.png'),
-   require('../../assets/vecteezy_sport-car-isolated-on-transparent-background-3d-rendering_19069771.png'),
-   require('../../assets/vecteezy_toy-car-isolated_13737872.png'),
-   require('../../assets/vecteezy_white-sport-car-on-transparent-background-3d-rendering_25305916.png'),
-   require('../../assets/vecteezy_white-suv-on-transparent-background-3d-rendering_25311224.png')
+  require('../../assets/vecteezy_modern-car-isolated-on-transparent-background-3d-rendering_19146428.png'),
+  require('../../assets/vecteezy_sport-car-3d-rendering_13472036.png'),
+  require('../../assets/vecteezy_sport-car-isolated-on-transparent-background-3d-rendering_19069771.png'),
+  require('../../assets/vecteezy_toy-car-isolated_13737872.png'),
+  require('../../assets/vecteezy_white-sport-car-on-transparent-background-3d-rendering_25305916.png'),
+  require('../../assets/vecteezy_white-suv-on-transparent-background-3d-rendering_25311224.png')
 ];
 
 export default function EditDetailsScreen() {
@@ -46,10 +46,13 @@ export default function EditDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
 
-  // Fetch user details from userProfileService
+  // Flag to prevent reloading data if already loaded
+  const [hasLoadedData, setHasLoadedData] = useState(false);
+
+  // Fetch user details from userProfileService only once
   useEffect(() => {
     const fetchUserDetails = async () => {
-      if (vehicleData && vehicleData.email) {
+      if (vehicleData && vehicleData.email && !hasLoadedData) {
         try {
           const userData = await fetchUserData(vehicleData.email);
           if (userData) {
@@ -58,9 +61,11 @@ export default function EditDetailsScreen() {
             setCountry(userData.country || "");
             setVehicleNumber(userData.vehicleNo || "");
             setIuNumber(userData.iuNo || "");
-            setAvatarIndex(prev => (prev === 0 ? (userData.avatarIndex || 0) : prev));
+            setAvatarIndex(userData.avatarIndex || 0);
+            setHasLoadedData(true);
           } else {
             console.log("No user document found");
+            setHasLoadedData(true);
           }
         } catch (error) {
           console.error("Error fetching user details:", error);
@@ -68,14 +73,11 @@ export default function EditDetailsScreen() {
         } finally {
           setLoading(false);
         }
-      } else {
-        console.log("No email available in vehicleData");
-        setLoading(false);
       }
     };
 
     fetchUserDetails();
-  }, [vehicleData]);
+  }, [vehicleData, hasLoadedData]);
 
   // Handle update using both services
   const handleUpdate = async () => {

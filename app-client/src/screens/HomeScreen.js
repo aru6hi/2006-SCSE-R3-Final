@@ -123,7 +123,7 @@ export default function HomeScreen({ navigation }) {
         const userDocRef = doc(db, 'users', email);
         await updateDoc(userDocRef, { avatarIndex: selectedAvatarIndex });
       }
-      Alert.alert('Avatar Updated', 'Select your car avatar');
+      Alert.alert('Update Avatar', 'Select your car avatar');
     } catch (err) {
       console.error('Failed to set car avatar:', err);
     }

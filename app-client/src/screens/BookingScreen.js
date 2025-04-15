@@ -428,15 +428,15 @@ export default function BookingScreen({ route, navigation }) {
 
         {/* Book Button */}
         <TouchableOpacity
-            style={[
-                  styles.bookButton,
-                  isBookDisabled && styles.bookButtonDisabled
-                ]}
-                disabled={isBookDisabled}
-                onPress={handleBooking}
-              >
-                <Text style={styles.bookButtonText}>BOOK SPOT</Text>
-              </TouchableOpacity>
+          style={[
+            styles.bookButton,
+            (isBookDisabled || !hoursFrom || !hoursTo) && styles.bookButtonDisabled
+          ]}
+          disabled={isBookDisabled || !hoursFrom || !hoursTo}
+          onPress={handleBooking}
+        >
+          <Text style={styles.bookButtonText}>BOOK SPOT</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       {/* Date selection modal */}
