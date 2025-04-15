@@ -21,7 +21,9 @@ yarn start
 
 In the client/android/ directory, create a file named `local.properties` (if it doesn’t already exist) and add the following line:
 
-`sdk.dir=/Users/<YourUsername>/Library/Android/sdk`
+Mac:     `sdk.dir=/Users/<YourUsername>/Library/Android/sdk`
+
+Windows: `sdk.dir=C:\\Users\\<YourUsername>\\AppData\\Local\\Android\\Sdk`
 
 Replace `<YourUsername>` with your actual username or update the path as needed for your system.
 
